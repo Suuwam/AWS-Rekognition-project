@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AWS Rekognition Compare</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #0b1117;
+            color: #e2e8f0;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            min-height: 100vh;
+        }
+        .app-header {
+            background: linear-gradient(90deg, #0f172a 0%, #1e293b 100%);
+            border-bottom: 3px solid #ff9900;
+            padding: 14px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .app-header h1 { font-size: 1.3rem; color: #fff; }
+        .app-header p { color: #94a3b8; font-size: 0.85rem; margin-top: 2px; }
+        .aws-badge {
+            background: #232f3e;
+            color: #ff9900;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            border: 1px solid #334155;
+        }
+
+        .main-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            padding: 16px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        @media (max-width: 900px) {
+            .main-grid { grid-template-columns: 1fr; }
+        }
+
+        .panel {
+            background: #151e2e;
+            border-radius: 10px;
+            border: 1px solid #1e293b;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        .panel-header {
+            background: #1e293b;
+            padding: 10px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #334155;
+        }
+        .panel-title { font-weight: 600; }
+        .badge {
+            font-size: 0.75rem;
+            padding: 3px 10px;
+            border-radius: 20px;
+            background: #334155;
+            color: #94a3b8;
+        }
+        .badge.done { background: #064e3b; color: #6ee7b7; }
+        .badge.fail { background: #450a0a; color: #fca5a5; }
+
+        .panel-body { padding: 14px; flex: 1; display: flex; flex-direction: column; gap: 10px; }
+
+        .upload-zone {
+            border: 2px dashed #334155;
+            border-radius: 8px;
+            padding: 28px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: #0f172a;
+        }
+        .upload-zone:hover { border-color: #ff9900; background: #1e293b; }
+        .upload-zone p { color: #64748b; font-size: 0.9rem; }
+
+        .image-stage {
+            position: relative;
+            width: 100%;
+            background: #000;
+            border-radius: 8px;
+            overflow: hidden;
+            display: none;
+            border: 1px solid #334155;
+            line-height: 0;
+        }
+        .image-stage.active { display: block; }
+        .image-stage img { width: 100%; height: auto; display: block; }
+        .image-stage canvas {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            pointer-events: none;
+        }
+
+        .controls { display: flex; gap: 8px; flex-wrap: wrap; }
+        .btn {
+            background: #334155;
+            color: #e2e8f0;
+            border: none;
+            padding: 7px 14px;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            font-size: 0.82rem;
+            transition: all 0.2s;
+        }
+        .btn:hover { background: #475569; }
+        .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        .labels-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            max-height: 140px;
+            overflow-y: auto;
+        }
+        .label-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 5px 10px;
+            background: #0f172a;
+            border-radius: 6px;
+            border-left: 3px solid;
+            font-size: 0.82rem;
+            cursor: pointer;
+            user-select: none;
+            transition: opacity 0.2s;
+        }
+        .label-chip:hover { filter: brightness(1.2); }
+        .label-chip.inactive { opacity: 0.3; }
+        .chip-name { font-weight: 500; color: #e2e8f0; }
+        .chip-meta { color: #64748b; font-size: 0.75rem; }
+
+        .loading { display: none; color: #ff9900; font-size: 0.9rem; }
+        .error {
+            display: none;
+            background: #450a0a;
+            color: #fca5a5;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            border: 1px solid #7f1d1d;
+        }
+
+        .analyze-bar {
+            grid-column: 1 / -1;
+            display: flex;
+            justify-content: center;
+            padding: 8px 0 0;
+        }
+        .btn-primary {
+            background: #ff9900;
+            color: #0f172a;
+            border: none;
+            padding: 14px 36px;
+            border-radius: 8px;
+            font-weight: 700;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .btn-primary:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(255,153,0,0.3); }
+        .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
+
+        .comparison {
+            grid-column: 1 / -1;
+            background: #151e2e;
+            border-radius: 10px;
+            border: 1px solid #1e293b;
+            padding: 18px;
+            display: none;
+        }
+        .comparison.show { display: block; }
+        .comparison h3 { text-align: center; color: #ff9900; margin-bottom: 14px; font-size: 1.05rem; }
+        .comp-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+        }
+        @media (max-width: 700px) { .comp-grid { grid-template-columns: 1fr; } }
+        .comp-col h4 {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 8px;
+            padding-bottom: 6px;
+            border-bottom: 2px solid;
+        }
+        .comp-col.common h4 { color: #6ee7b7; border-color: #059669; }
+        .comp-col.only-a h4 { color: #93c5fd; border-color: #2563eb; }
+        .comp-col.only-b h4 { color: #fca5a5; border-color: #dc2626; }
+        .comp-item { padding: 4px 0; font-size: 0.88rem; color: #cbd5e1; }
+        .empty-msg { color: #475569; font-style: italic; font-size: 0.82rem; }
+    </style>
+</head>
+<body>
+
+    <header class="app-header">
+        <div>
+            <h1>🔍 AWS Rekognition Side-by-Side</h1>
+            <p>Upload two images, click Analyze, and compare detected objects visually</p>
+        </div>
+        <div class="aws-badge">S3 • Lambda • Rekognition • API Gateway</div>
+    </header>
+
+    <div class="main-grid">
+        <!-- PANEL A -->
+        <div class="panel">
+            <div class="panel-header">
+                <span class="panel-title">📷 Image A</span>
+                <span class="badge" id="badgeA">Waiting</span>
+            </div>
+            <div class="panel-body">
+                <div class="upload-zone" id="uploadA">
+                    <p>Click or drag image here</p>
+                    <input type="file" id="fileA" accept="image/*" hidden>
+                </div>
+                <div class="image-stage" id="stageA">
+                    <img id="imgA" src="" alt="A">
+                    <canvas id="canvasA"></canvas>
+                </div>
+                <div class="controls">
+                    <button class="btn" id="toggleA" disabled>Hide Boxes</button>
+                </div>
+                <div class="loading" id="loadingA">Analyzing…</div>
+                <div class="error" id="errorA"></div>
+                <div class="labels-list" id="labelsA"></div>
+            </div>
+        </div>
+
+        <!-- PANEL B -->
+        <div class="panel">
+            <div class="panel-header">
+                <span class="panel-title">📷 Image B</span>
+                <span class="badge" id="badgeB">Waiting</span>
+            </div>
+            <div class="panel-body">
+                <div class="upload-zone" id="uploadB">
+                    <p>Click or drag image here</p>
+                    <input type="file" id="fileB" accept="image/*" hidden>
+                </div>
+                <div class="image-stage" id="stageB">
+                    <img id="imgB" src="" alt="B">
+                    <canvas id="canvasB"></canvas>
+                </div>
+                <div class="controls">
+                    <button class="btn" id="toggleB" disabled>Hide Boxes</button>
+                </div>
+                <div class="loading" id="loadingB">Analyzing…</div>
+                <div class="error" id="errorB"></div>
+                <div class="labels-list" id="labelsB"></div>
+            </div>
+        </div>
+
+        <!-- SINGLE ANALYZE BUTTON -->
+        <div class="analyze-bar">
+            <button class="btn-primary" id="analyzeBtn" disabled>
+                <span>🔍</span> Analyze Both Images
+            </button>
+        </div>
+
+        <!-- COMPARISON -->
+        <div class="comparison" id="comparisonSection">
+            <h3>📊 Comparison Results</h3>
+            <div class="comp-grid">
+                <div class="comp-col common">
+                    <h4>✅ In Both</h4>
+                    <div id="commonLabels"></div>
+                </div>
+                <div class="comp-col only-a">
+                    <h4>🅰️ Only A</h4>
+                    <div id="onlyA"></div>
+                </div>
+                <div class="comp-col only-b">
+                    <h4>🅱️ Only B</h4>
+                    <div id="onlyB"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ⚠️ REPLACE WITH YOUR API GATEWAY URL + /analyze
+        const API_URL = 'https://9for4w3kjc.execute-api.ap-southeast-1.amazonaws.com/prod/analyze';
+
+        const state = {
+            A: { file: null, result: null, showBoxes: true, colors: {}, hidden: new Set() },
+            B: { file: null, result: null, showBoxes: true, colors: {}, hidden: new Set() }
+        };
+
+        function setupPanel(side) {
+            const upload = document.getElementById('upload' + side);
+            const fileInput = document.getElementById('file' + side);
+            const stage = document.getElementById('stage' + side);
+            const img = document.getElementById('img' + side);
+            const toggle = document.getElementById('toggle' + side);
+
+            upload.addEventListener('click', () => fileInput.click());
+
+            upload.addEventListener('dragover', e => {
+                e.preventDefault();
+                upload.style.borderColor = '#ff9900';
+            });
+            upload.addEventListener('dragleave', () => {
+                upload.style.borderColor = '#334155';
+            });
+            upload.addEventListener('drop', e => {
+                e.preventDefault();
+                upload.style.borderColor = '#334155';
+                if (e.dataTransfer.files.length) handleFile(side, e.dataTransfer.files[0]);
+            });
+
+            fileInput.addEventListener('change', e => {
+                if (e.target.files.length) handleFile(side, e.target.files[0]);
+            });
+
+            toggle.addEventListener('click', () => {
+                state[side].showBoxes = !state[side].showBoxes;
+                toggle.textContent = state[side].showBoxes ? 'Hide Boxes' : 'Show Boxes';
+                drawBoxes(side);
+            });
+
+            img.addEventListener('load', () => {
+                const canvas = document.getElementById('canvas' + side);
+                canvas.width = img.naturalWidth;
+                canvas.height = img.naturalHeight;
+                if (state[side].result) drawBoxes(side);
+            });
+        }
+
+        function handleFile(side, file) {
+            if (!file.type.startsWith('image/')) {
+                alert('Please upload an image file');
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = e => {
+                const img = document.getElementById('img' + side);
+                img.src = e.target.result;
+
+                document.getElementById('stage' + side).classList.add('active');
+                document.getElementById('upload' + side).style.display = 'none';
+                document.getElementById('toggle' + side).disabled = false;
+
+                state[side].file = e.target.result;
+                state[side].result = null;
+                state[side].colors = {};
+                state[side].hidden.clear();
+                state[side].showBoxes = true;
+                document.getElementById('toggle' + side).textContent = 'Hide Boxes';
+
+                clearPanel(side);
+                updateAnalyzeButton();
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function clearPanel(side) {
+            document.getElementById('labels' + side).innerHTML = '';
+            document.getElementById('error' + side).style.display = 'none';
+            document.getElementById('loading' + side).style.display = 'none';
+            document.getElementById('badge' + side).textContent = 'Ready';
+            document.getElementById('badge' + side).className = 'badge';
+            const canvas = document.getElementById('canvas' + side);
+            canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+        }
+
+        function updateAnalyzeButton() {
+            const btn = document.getElementById('analyzeBtn');
+            const canAnalyze = state.A.file || state.B.file;
+            btn.disabled = !canAnalyze;
+            if (state.A.file && state.B.file) {
+                btn.innerHTML = '<span>🔍</span> Analyze Both Images';
+            } else if (state.A.file) {
+                btn.innerHTML = '<span>🔍</span> Analyze Image A';
+            } else if (state.B.file) {
+                btn.innerHTML = '<span>🔍</span> Analyze Image B';
+            }
+        }
+
+        async function analyzeImage(side) {
+            const loading = document.getElementById('loading' + side);
+            const error = document.getElementById('error' + side);
+            const badge = document.getElementById('badge' + side);
+
+            loading.style.display = 'block';
+            error.style.display = 'none';
+            badge.textContent = 'Analyzing…';
+
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ image: state[side].file })
+                });
+
+                const data = await response.json();
+                const body = (typeof data.body === 'string') ? JSON.parse(data.body) : (data.body || data);
+
+                if (!response.ok || body.error) {
+                    throw new Error(body.error || `HTTP ${response.status}`);
+                }
+
+                state[side].result = body;
+                assignColors(side, body.labels);
+                drawBoxes(side);
+                renderLabels(side, body.labels);
+
+                badge.textContent = `${body.labels.length} objects`;
+                badge.className = 'badge done';
+
+            } catch (err) {
+                console.error(`Side ${side} error:`, err);
+                error.textContent = 'Error: ' + err.message;
+                error.style.display = 'block';
+                badge.textContent = 'Failed';
+                badge.className = 'badge fail';
+            } finally {
+                loading.style.display = 'none';
+            }
+        }
+
+        document.getElementById('analyzeBtn').addEventListener('click', async () => {
+            const btn = document.getElementById('analyzeBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<span>⏳</span> Analyzing…';
+
+            const promises = [];
+            if (state.A.file) promises.push(analyzeImage('A'));
+            if (state.B.file) promises.push(analyzeImage('B'));
+
+            await Promise.all(promises);
+
+            btn.disabled = false;
+            updateAnalyzeButton();
+            updateComparison();
+        });
+
+        function assignColors(side, labels) {
+            const colors = {};
+            labels.forEach((label, i) => {
+                const hue = (i * 137.508) % 360;
+                colors[label.name] = `hsl(${hue}, 90%, 60%)`;
+            });
+            state[side].colors = colors;
+        }
+
+        function drawBoxes(side) {
+            const canvas = document.getElementById('canvas' + side);
+            const ctx = canvas.getContext('2d');
+            const result = state[side].result;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            if (!result || !state[side].showBoxes) return;
+
+            const w = canvas.width;
+            const h = canvas.height;
+
+            result.labels.forEach(label => {
+                if (state[side].hidden.has(label.name)) return;
+                if (!label.instances || !label.instances.length) return;
+
+                const color = state[side].colors[label.name];
+
+                // ─── TRANSPARENT BOXES: very light fill + strong glowing border ───
+                ctx.strokeStyle = color;
+                ctx.lineWidth = Math.max(2.5, w * 0.004);
+                // Glow effect
+                ctx.shadowColor = color;
+                ctx.shadowBlur = 12;
+                // Almost invisible fill so image shows through clearly
+                ctx.fillStyle = color.replace('hsl', 'hsla').replace(')', ', 0.06)');
+
+                label.instances.forEach(box => {
+                    const x = box.left * w;
+                    const y = box.top * h;
+                    const bw = box.width * w;
+                    const bH = box.height * h;
+                    const r = Math.min(8, bw * 0.12, bH * 0.12);
+
+                    // Rounded rectangle path
+                    ctx.beginPath();
+                    ctx.moveTo(x + r, y);
+                    ctx.lineTo(x + bw - r, y);
+                    ctx.quadraticCurveTo(x + bw, y, x + bw, y + r);
+                    ctx.lineTo(x + bw, y + bH - r);
+                    ctx.quadraticCurveTo(x + bw, y + bH, x + bw - r, y + bH);
+                    ctx.lineTo(x + r, y + bH);
+                    ctx.quadraticCurveTo(x, y + bH, x, y + bH - r);
+                    ctx.lineTo(x, y + r);
+                    ctx.quadraticCurveTo(x, y, x + r, y);
+                    ctx.closePath();
+
+                    ctx.fill();
+                    ctx.stroke();
+                });
+
+                // Reset shadow for text
+                ctx.shadowBlur = 0;
+
+                // ─── FLOATING LABEL TAG (semi-transparent dark background) ───
+                label.instances.forEach(box => {
+                    const x = box.left * w;
+                    const y = box.top * h;
+
+                    const text = `${label.name} ${Math.round(label.confidence)}%`;
+                    ctx.font = `bold ${Math.max(11, h * 0.016)}px sans-serif`;
+                    const metrics = ctx.measureText(text);
+                    const pad = 5;
+                    const tagW = metrics.width + pad * 2;
+                    const tagH = Math.max(16, h * 0.024);
+
+                    // Semi-transparent dark pill behind text
+                    ctx.fillStyle = 'rgba(15, 23, 42, 0.75)';
+                    ctx.beginPath();
+                    ctx.roundRect(x, y - tagH - 3, tagW, tagH, 4);
+                    ctx.fill();
+
+                    // Text in the label's color for easy matching
+                    ctx.fillStyle = color;
+                    ctx.fillText(text, x + pad, y - 6);
+                });
+            });
+
+            // ─── TEXT DETECTION: dashed outline, no fill ───
+            if (result.texts) {
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 1.8;
+                ctx.setLineDash([5, 4]);
+                ctx.shadowColor = '#ffffff';
+                ctx.shadowBlur = 6;
+
+                result.texts.forEach(t => {
+                    const b = t.box;
+                    if (!b) return;
+                    ctx.strokeRect(b.left * w, b.top * h, b.width * w, b.height * h);
+                });
+
+                ctx.setLineDash([]);
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        function renderLabels(side, labels) {
+            const container = document.getElementById('labels' + side);
+            container.innerHTML = '';
+
+            labels.forEach(label => {
+                const chip = document.createElement('div');
+                chip.className = 'label-chip';
+                chip.style.borderLeftColor = state[side].colors[label.name];
+
+                const count = label.instances.length;
+                chip.innerHTML = `
+                    <span class="chip-name">${label.name}</span>
+                    <span class="chip-meta">${label.confidence}%</span>
+                    ${count > 0 ? `<span class="chip-meta">×${count}</span>` : ''}
+                `;
+
+                chip.addEventListener('click', () => {
+                    chip.classList.toggle('inactive');
+                    if (state[side].hidden.has(label.name)) {
+                        state[side].hidden.delete(label.name);
+                    } else {
+                        state[side].hidden.add(label.name);
+                    }
+                    drawBoxes(side);
+                });
+
+                container.appendChild(chip);
+            });
+        }
+
+        function updateComparison() {
+            const a = state.A.result;
+            const b = state.B.result;
+            const section = document.getElementById('comparisonSection');
+
+            if (!a || !b) {
+                section.classList.remove('show');
+                return;
+            }
+
+            section.classList.add('show');
+
+            const namesA = new Set(a.labels.map(l => l.name));
+            const namesB = new Set(b.labels.map(l => l.name));
+
+            const common = [...namesA].filter(n => namesB.has(n)).sort();
+            const onlyA = [...namesA].filter(n => !namesB.has(n)).sort();
+            const onlyB = [...namesB].filter(n => !namesA.has(n)).sort();
+
+            const render = (arr, id) => {
+                const el = document.getElementById(id);
+                el.innerHTML = arr.length
+                    ? arr.map(n => `<div class="comp-item">• ${n}</div>`).join('')
+                    : '<div class="empty-msg">None</div>';
+            };
+
+            render(common, 'commonLabels');
+            render(onlyA, 'onlyA');
+            render(onlyB, 'onlyB');
+        }
+
+        setupPanel('A');
+        setupPanel('B');
+    </script>
+</body>
+</html>
